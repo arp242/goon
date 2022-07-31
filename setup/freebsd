@@ -1,0 +1,73 @@
+#!/usr/bin/env zsh
+[ "${ZSH_VERSION:-}" = "" ] && echo >&2 "Only works with zsh" && exit 1
+setopt err_exit no_unset pipefail no_clobber
+
+
+# Just in case; don't want to clobber stuff.
+print 'from old version; untested'
+exit 99
+
+root=$0:P:h:h
+
+version='13.1-RELEASE'
+arch=amd64
+img=$root/disks/$machine-$version.qcow2
+
+# Download
+(
+	cd $root/disks
+	print "Fetching FreeBSD-$version-$arch.qcow2.xz"
+	curl https://download.freebsd.org/releases/VM-IMAGES/$version/$arch/Latest/FreeBSD-$version-$arch.qcow2.xz >$img.xz
+	want=$(curl -s https://download.freebsd.org/releases/VM-IMAGES/$version/$arch/Latest/CHECKSUM.SHA256 |
+		grep FreeBSD-$version-$arch.qcow2.xz CHECKSUM.SHA256)
+	want=${want#*= }
+	have=$(sha256sum $img.xz | cut -d $' ' -f1)
+
+	if [[ $have != $want ]]; then
+		print >&2 "invalid checksum for $img.xz"
+		print >&2 "  want: $sum"
+		print >&2 "  have: $have"
+		exit 1
+	fi
+
+	xz -d $img.xz
+)
+
+user=$USER
+key=$(cat ~/.ssh/authorized_keys)
+
+# Setup; we can use -serial stdio in qemu
+#
+# https://fadeevab.com/how-to-setup-qemu-output-to-console-and-automate-using-shell-script/
+# https://stackoverflow.com/q/3146013/660921
+#
+# Need to look into that
+<<-EOF
+	#!/bin/sh
+	#
+	# FreeBSD setup script
+
+	# Lots of wasted space.
+	rm -rf /usr/lib/debug
+
+	# Don't wait for the bootloader.
+	echo 'boot_mute="YES"'    >> /boot/loader.conf
+	echo 'autoboot_delay="0"' >> /boot/loader.conf
+
+	# Enable sshd
+	echo 'sshd_enable=YES' >> /etc/rc.conf
+	service sshd start
+
+	# Add user, setup our key.
+	echo passwd | pw user add -G wheel -n $user -h 0
+	install -do $user -g $user /home/$user/.ssh
+	echo "$key" >> /home/martin/.ssh/authorized_keys
+
+	# No login messages.
+	: >/etc/motd.template
+	: >/var/run/motd
+
+	# Install Go.
+	pkg bootstrap
+	pkg install -y go
+EOF

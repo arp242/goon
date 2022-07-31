@@ -1,0 +1,65 @@
+# vim:ft=zsh
+
+help-top() {
+	<<-EOF
+	usage: $progname [machine] [command]
+
+	$progname runs Go commands on remote machines: https://github.com/arp242/go-on
+
+	Use "$progname help intro" for a general introduction, or "$progname help <cmd>"
+	for detailed help on a command. "$progname help all" lists all help pages.
+
+	Go commands:
+	    go         Start machine, sync directory, and run "go" (alias: test, build,
+	               and run for "go test", "go build", and "go run").
+
+	File commands:
+	    get        Get a file.
+	    put        Put a file.
+	    sync       Sync the current directory.
+
+	Management:
+	    ssh        Run ssh (alias: shell, sh).
+	    status     Get status of machine.
+	    start      Start a machine (alias: boot).
+	    stop       Stop a machine (alias: halt, shutdown).
+	    machines   List all machines we know about (alias: list, ls).
+	EOF
+}
+
+help-intro() {
+	<<-EOF
+		help-intro TODO
+	EOF
+}
+
+help-all() {
+	p() {
+		local h="Help for ${1#*-}"
+		print "─── \x1b[1m ${(r:60::─::\x1b[0m :)h}\n"
+		$1
+		print
+	}
+
+	help-top
+	p help-intro
+	for f in $(typeset -f + | grep ^help-); do
+		[[ $f =~ 'help-(all|top|intro)' ]] && continue
+		p $f
+	done
+}
+
+help() {
+	local err=${argv[1]:-}
+	local cmd=${argv[2]:-top}
+
+	[[ -n $err ]] && print >&2 "$progname: error: $err\n"
+
+	if ! typeset -f help-$cmd >/dev/null; then
+		help "unknown help topic: $cmd"
+	fi
+
+	help-$cmd
+
+	[[ -n $err ]] && exit 1 || exit 0
+}

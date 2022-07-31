@@ -1,0 +1,27 @@
+# vim:ft=zsh
+
+help-stop() {
+	<<-EOF
+	Stop the remote server.
+
+	This currently works by issuing a "halt" or "shutdown" command, which
+	requires some admin privileges:
+
+	    macos    sudo halt         assumes NOPASSWD in /etc/sudoers
+	    windows  shutdown /s /f    assumes user is Administrator
+	    other    su -m root        assumes no root password
+	EOF
+}
+
+# TODO: wait for machine to stop; stopping + starting a machine is tricky now;
+#       e.g. Windows takes a minute and the PID will still exist.
+cmd-stop() {
+	case $platform in 
+		(macos)   ssh 'sudo halt' ;;
+		(windows) ssh 'shutdown /s /f' ;;
+		(*)       ssh 'su -m root -c "shutdown -p now"' ;;
+	esac
+}
+
+cmd-halt()     { cmd-halt $@ }
+cmd-shutdown() { cmd-halt $@ }

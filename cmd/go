@@ -1,0 +1,41 @@
+# vim:ft=zsh
+
+help-go() {
+	<<-EOF
+	Run go on the remote server.
+
+	The command is run inside the current directory, which is automatically
+	synced to the server first.
+
+	Will automatically try to start the machine if it's not started yet.
+
+	Any arguments will be passed:
+
+	    % $progname freebsd go build -trimpath ./cmd/pkg
+	    % $progname freebsd go test -v -run TestMyFunc
+
+	As a shortcut, the "test", "build", and "run" commands can be used:
+
+	    % $progname freebsd test -v -run TestMyFunc
+	EOF
+}
+
+cmd-go() {
+	cmd-start
+	cmd-sync
+
+	if [[ $platform = macos ]]; then
+		# TODO: why isn't this set on ssh? It works if I just use "ssh", but not
+		#       when using a non-interactive shell? I added it to various zshrc
+		#       files but it doesn't seem to take?
+		#
+		# -o "SetEnv PATH=/usr/local/go/bin"?
+		ssh "path=(/usr/local/go/bin \$path); cd \"$dir\" && go $@"
+	else
+		ssh "cd \"$dir\" && go $@"
+	fi
+}
+
+cmd-run()   { cmd-go run   $@ }
+cmd-test()  { cmd-go test  $@ }
+cmd-build() { cmd-go build $@ }

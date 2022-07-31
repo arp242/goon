@@ -1,0 +1,18 @@
+- Install Go from the installer at go.dev; this will add go to %PATH% and
+  "go.exe" should work from the prompt.
+
+- Setup ssh: on Windows 10 at least this can be done from services
+
+- Enable sshd to start on boot from services
+
+- Fuck about with ssh keys and permissions; by default it refuses to use the key
+  because weird and confusing permission errors
+
+      Bad permissions. Try removing permissions for user: S-1-5-21-2815334774-776037288-1646662406-1002 on file C:/Users/martin/.ssh/authorized_keys.
+
+  What the fuck does that even mean? I can't find a reference to that "user"
+  anywhere.
+
+  In C:\ProgramData\ssh\sshd_config set "StrictMode no" and that fixes it.
+
+  To log to the log file, use LOCAL0. The event viewer is useless.

@@ -1,0 +1,53 @@
+# vim:ft=zsh
+
+help-sync() {
+	<<-EOF
+	Sync the current directory to the server with scp.
+
+	You normally don't need to run this manually; te "go" command does it
+	automatically.
+	EOF
+}
+
+# Sync files using only ssh and scp; this is nice as there are no dependencies
+# involved.
+#
+# The downside is that it's not the most efficient: it will always just upload
+# the lot. For small projects, that's okay. For larger ones, probably not.
+# Implementing optional rsync support would be a good idea.
+cmd-sync() {
+	case $platform in 
+		(windows)
+			# TODO: output of "wmic os get" is a bit ugly, but best we can do
+			#       atm (findstr doesn't support "grep -o"). PowerShell can do
+			#       more; not sure how/why it doesn't just start powershell by
+			#       default. https://stackoverflow.com/a/40781043/660921
+			ssh "(if not exist \"$dir\" mkdir \"$dir\" end) && wmic os get Version /VALUE | findstr \"[^=][0-9.]*\""
+			;;
+		(macos)
+			ssh "mkdir -p \"$dir\" && echo \"\$(sw_vers | cut -d : -f 2 | tr -d '\t' | tr '\n' ' ')\""
+			;;
+		(*)
+			ssh "mkdir -p \"$dir\" && uname -sr"
+	esac
+
+	scp -q go.mod go.sum *.go *(/N) scp://$ssh_user@$ssh_host/$dir
+
+	# Process deletes.
+
+	# TODO: figure out how to do this on Windows.
+	[[ $platform = windows ]] && return 0
+
+	# TODO: none of the below properly escapes filenames.
+	# Use find as we can't rely on zsh/expanded globs on the server
+	local remote=($(ssh "cd $dir && find . -type f"))
+	for (( i=1; i<=$#remote; i++ )); remote[$i]=${remote[$i][3,-1]}
+
+	local rm=()
+	for r in $remote; do
+		[[ ! -e $r ]] && rm+=($r)
+	done
+	if (( $#rm > 0 )); then
+		ssh "cd $dir && rm $rm"
+	fi
+}

@@ -1,0 +1,262 @@
+#!/usr/bin/env zsh
+[ "${ZSH_VERSION:-}" = "" ] && echo >&2 "Only works with zsh" && exit 1
+setopt err_exit no_unset pipefail
+
+root=$0:P:h
+progname=$0:t
+dir=$PWD:t
+
+for f in $root/cmd/*; source $f
+
+# TODO: machine cmd order is a bit awkward; for example to list all machines we
+# could add:
+#
+#   go-on ls
+#
+# But now this doesn't work as it needs the machine name first. We already added
+# an exception for help.
+#
+# But on the other hand, this looks awkward IMO:
+#
+#    go-on go freebsd test
+#
+# Also harder to quick edit the command:
+#
+#    go-on go freebsd test
+#    go-on shell freebsd
+#
+#    # Harder to edit than:
+#    go-on freebsd go test
+#    go-on freebsd shell
+#
+# Maybe add -m/-machine flag?
+#
+#     go-on -m freebsd go test
+#     go-on -m freebsd shell
+#
+# But then I need to add flag parsing, which I had hoped to avoid.
+#
+# The old version avoided this by having separate freebsd, macos, etc. scripts
+# that you would run:
+#
+#   ~/go-on/freebsd go test
+#   ~/go-on/macos   go test
+#
+# idk what's the best thing to do it.
+main() {
+	has-commands || exit $?
+
+	(( $#argv == 0 ))         && help ''
+	[[ ${argv[1]:-} = help ]] && help '' ${argv[2]:-}
+
+	# TODO: ugly hack; see comment at the function.
+	if [[ ${argv[1]:-} = ls || ${argv[1]:-} = list || ${argv[1]:-} = machines ]]; then
+		for m in $(list-machines); do
+			(
+				machine=$m
+				typeset -g ssh_user=$USER
+				typeset -g ssh_host=localhost
+				typeset -g ssh_port=22
+
+				[[ -z ${platform:-} ]] && platform=${machine%%-*}
+				source $root/machines/$m
+
+				if check-status; then
+					print -n 'started  '
+				else
+					print -n '         '
+				fi 
+				print -f '%-10s platform=%-10s ssh=%s@%s:%s\n' $m $platform $ssh_user $ssh_host $ssh_port
+			)
+		done
+		exit 0
+	fi
+
+	[[ -z ${argv[1]:-} ]] && help 'machine missing'
+	[[ -z ${argv[2]:-} ]] && help 'command missing'
+
+	typeset -g machine=$argv[1]  # Global
+	local cmd=$argv[2]
+	shift 2
+
+	[[ ! -f $root/machines/$machine ]] && help "machine $machine doesn't exist; known machines:\n    $(list-machines)"
+
+	typeset -g ssh_user=$USER
+	typeset -g ssh_host=localhost
+	typeset -g ssh_port=22
+	source $root/machines/$machine
+	[[ -z ${platform:-} ]] && platform=${machine%%-*}
+	case $platform in
+		(freebsd|openbsd|netbsd|dragonfly|windows|macos|solaris|illumios) ;;
+		(*) help "unknown platform $platform"
+	esac
+
+	[[ $cmd =~ '^-*h(elp)?$' ]]      && help '' ${argv[1]:-}
+	typeset -f cmd-$cmd >/dev/null || help "unknown command: $cmd"
+	cmd-$cmd $argv
+}
+
+# Override ssh to add in our port, user, and host.
+ssh() {
+	=ssh -p $ssh_port $ssh_user@$ssh_host ${ssh_opts:-} $@
+}
+
+# And scp too.
+scp() {
+	# -C: compression
+	# -p: preserve mtime, atime, mode
+	# -r: recursively follow dirs
+	=scp -CprP $ssh_port $@
+}
+
+# Check that the commands we require actually exist.
+has-commands() {
+	e=0
+	for t in ssh scp; do
+		if (( ! $+commands[$t] )); then
+			print >&2 "$progname: required command '$t' not in \$PATH"
+			e=1
+		fi
+	done
+	return $e
+}
+
+# List all machines.
+list-machines() {
+	(cd $root/machines && print -r -- *)
+}
+
+# Wait for ssh to be available.
+wait-ssh() {
+	local cmd=true
+	[[ $platform = windows ]] && cmd=rem
+
+	print -n "$progname: waiting for ssh to be available at $ssh_host:$ssh_port … "
+	while :; do
+		check-status && break
+	done
+	print 'Okay'
+}
+
+###
+### QEMU support
+###
+
+has-qemu() {
+	local arch=$1
+	if (( ! $+commands[qemu-system-$arch] )); then
+		print >&2 "$progname: qemu-system-$arch not in \$PATH; can't start QEMU"
+		exit 1
+	fi
+}
+
+# Run QEMU.
+run-qemu() {
+	# This doesn't work because it uses an assoc array for the qemu parameters,
+	# but it can have multiple of the same (e.g. -device ...), so that doesn't
+	# actually work. Keep it for now; probably want something like this at some
+	# point.
+	print "run-qemu doesn't work"
+	exit 99
+
+	local arch=$1
+	local img=$2
+	local pid=$3
+	local ssh_ip=$(resolve-host $ssh_host)
+	shift 3
+
+	if (( ! $+commands[qemu-system-$arch] )); then
+		print >&2 "$progname: qemu-system-$arch not in \$PATH; can't start QEMU"
+		return 1
+	fi
+
+	mkdir -p $root/run
+	if has-pid $pid; then
+		print "$progname: $machine already started; nothing to do"
+		return 0
+	fi
+
+	typeset -A args=(
+		-enable-kvm ''
+		-cpu        'host,kvm=on'
+		-smp        'cores=2,threads=1,sockets=1'
+		-m          '2G'
+		-name       "$machine"
+		-pidfile    "$pid"
+		-display    "none"
+		-device     "virtio-blk-pci,drive=SystemDisk"
+		-drive      "id=SystemDisk,if=none,file=$img,format=qcow2"
+		-device     'e1000,netdev=mynet0'
+		-netdev     "user,id=mynet0,hostfwd=tcp:$ssh_ip:$ssh_port-:22"
+	)
+	typeset -A extra=($argv)
+	for k in ${(k)extra}; args[$k]=$extra[$k]
+
+	#for k in ${(k)args}; print -f "%-20s = %s\n" -- $k ${args[$k]}
+
+	local cmd=(qemu-system-$arch ${(kv)args})
+	$cmd
+
+	#$k     =>    ${cmd[$k:q]:-}"
+
+	#print -- $cmd
+	#print
+	#print -- $argv
+	#${cmd[@]}
+}
+
+# Check if the pidfile $1 exists, and (optionally) if the PID matches the
+# command $2.
+has-pid() {
+	local pidfile=$1
+	local cmd=${2:-}
+
+	[[ ! -f $pidfile ]] && return 1
+
+	# Check this PID actually exists and is what we expect. In case of crashes
+	# or whatnot the pidfile may remain, and the PID could have been re-used by
+	# another process. It's rare, but I've seen it happen and it's VERY
+	# confusing when it does.
+	if [[ $cmd != '' && $(ps -q $(< $pidfile) -o comm=) =~ "^$cmd" ]]; then
+		print >&2 "$progname: pidfile $pidfile exists, but PID $(< $pidfile) doesn't seem to be '$cmd'; bailing out"
+		exit 1
+	fi
+
+	return 0
+}
+
+# Lookup host; zsh doesn't really expose anything for this as far as I can find,
+# so try a bunch of things.
+#
+# Note dig/host/nslookup/drill ignores /etc/hosts; we can't use it.
+#
+# Some other options:
+#
+#   % nc -v localhost 1
+#   nc: connect to localhost (127.0.0.1) port 1 (tcp) failed: Connection refused
+resolve-host() {
+	local host=$1
+
+	if (( $+commands[getent] )); then
+		local x=($(getent hosts $host))
+		print -r -- $x[1]
+	elif (( $+commands[python] )); then
+		python -c "import socket; print(socket.gethostbyname('$host'))"
+	elif (( $+commands[ruby] )); then
+		ruby -rresolv -e "puts(Resolv.getaddress('$host'))"
+	elif (( $+commands[perl] )); then
+		perl -MSocket -MNet::hostent -E 'say inet_ntoa((gethost shift)->addr)' $host
+	elif (( $+commands[ping] )); then
+		local x=$(ping $host -q -c1 -w1 -W1) # --quiet --count 1 --timeout 1 --linger 1
+		if (( $? > 0 )); then
+			print >&2 -r -- $x
+			return $?
+		fi
+		<<<$x head -n1 | grep -Eo '\([0-9a-f.:]{7,}\)' | tr -d '()'
+	else
+		print >&2 'no facility to get IP address from host (tried: getent, python, ruby, perl, ping)'
+		return 1
+	fi
+}
+
+main $argv[@]

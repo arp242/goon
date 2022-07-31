@@ -1,0 +1,20 @@
+# vim:ft=zsh
+
+help-get() {
+	<<-EOF
+	Get a file or directory from the remote server with scp; the path is
+	relative to the working directory. Directories are copied recursively.
+
+	    % $progname freebsd go build ./cmd/prog
+
+	    # Save as "prog"
+	    % $progname freebsd get prog
+
+		# Save as "prog-freebsd"
+	    % $progname freebsd get prog prog-freebsd
+	EOF
+}
+
+cmd-get() {
+	scp scp://$ssh_user@$ssh_host/$dir/$1 ${2:-.}
+}

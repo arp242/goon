@@ -1,0 +1,4 @@
+/disks
+/run
+*.qcow2
+*.fd

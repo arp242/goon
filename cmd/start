@@ -1,0 +1,20 @@
+# vim:ft=zsh
+
+help-start() {
+	<<-EOF
+	Run the machine's start-machine function and wait for ssh to become
+	available.
+	EOF
+}
+
+cmd-start() {
+	if ! typeset -f start-machine >/dev/null; then
+		print >&2 "$progname: start-machine not defined"
+		return 1
+	fi
+
+	start-machine
+	check-status || wait-ssh
+}
+
+cmd-boot() { cmd-start $@ }

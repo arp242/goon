@@ -1,0 +1,18 @@
+# vim:ft=zsh
+
+help-put() {
+	<<-EOF
+	Upload a file or directory to the remote server with scp; the path is
+	relative to the working directory. Directories are copied recursively.
+
+	    # Save as "prog"
+	    % $progname freebsd put prog
+
+	# Save as "prog-freebsd"
+	    % $progname freebsd put prog prog-freebsd
+	EOF
+}
+
+cmd-put() {
+	scp $1 scp://$ssh_user@$ssh_host/$dir/${2:-}
+}

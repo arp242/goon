@@ -1,0 +1,65 @@
+# vim:ft=zsh
+
+ssh_port=9923
+
+start-machine() {
+	local arch=x86_64
+	local version=10
+	local img=$root/disks/$machine-$version.qcow2
+	local pid=$root/run/$machine-$version.pid
+	local ssh_ip=$(resolve-host $ssh_host)
+	local bios=/usr/share/qemu/edk2-x86_64-code.fd
+	local vars=$root/disks/windows-10-OVMF_VARS.fd
+
+	has-qemu $arch || return 1
+
+	mkdir -p $root/run
+	if has-pid $pid; then
+		print "$progname: $machine already started; nothing to do"
+		return 0
+	fi
+
+	print "$progname: starting QEMU VM from $img:t"
+	local cmd=(qemu-system-$arch
+		-enable-kvm
+		-cpu          'host,kvm=on,+hypervisor,+invtsc,l3-cache=on,migratable=no,hv_frequencies,kvm_pv_unhalt,hv_reenlightenment,hv_relaxed,hv_spinlocks=8191,hv_stimer,hv_synic,hv_time,hv_vapic,hv_vendor_id=1234567890ab,hv_vpindex'
+		-smp          'cores=1,threads=2,sockets=1'
+		-m            '4G'
+		-name         'windows-10,process=windows-10'
+		-pidfile      "$pid"
+
+		# Hard drive
+		-device       'virtio-blk-pci,drive=SystemDisk'
+		-drive        "id=SystemDisk,if=none,format=qcow2,file=$img"
+
+		# Network
+		-device       'virtio-net,netdev=nic'
+		-netdev       "user,hostname=windows-10,hostfwd=tcp:$ssh_ip:$ssh_port-:22,id=nic"
+
+		# No display
+		#-device       qxl-vga,ram_size=65536,vram_size=65536,vgamem_mb=64
+		#-display      sdl,gl=on
+		-display    'none'
+
+		# Random stuff from quickemu; not sure what's needed, but keep it for now.
+		-machine      q35,smm=on,vmport=off
+		-no-hpet
+		-global       kvm-pit.lost_tick_policy=discard
+		-global       ICH9-LPC.disable_s3=1
+		-device       virtio-balloon
+		-smbios       type=2,manufacturer="QuickemuProject",product=Quickemu,version=3.16,serial=0xDEADBEEF,location=quickemu.com,asset=windows-10
+		-rtc          base=localtime,clock=host,driftfix=slew
+		-device       virtio-serial-pci
+		-device       virtio-rng-pci,rng=rng0
+		-object       rng-random,id=rng0,filename=/dev/urandom
+		-device       pci-ohci,id=smartpass
+		-device       usb-ehci,id=input
+		-device       usb-kbd,bus=input.0
+		-k            en-us
+		-device       usb-tablet,bus=input.0
+		-global       driver=cfi.pflash01,property=secure,value=on
+		-drive        if=pflash,format=raw,unit=0,file=$bios,readonly=on
+		-drive        if=pflash,format=raw,unit=1,file=$vars
+	)
+	${cmd[@]} &
+}

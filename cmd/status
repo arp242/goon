@@ -1,0 +1,31 @@
+# vim:ft=zsh
+
+help-status() {
+	<<-EOF
+	Check if a machine is reachable via SSH.
+
+	Exits with 0 if the machine can be reached, 2 if it can't, and 1 on any
+	other failure.
+	EOF
+}
+
+cmd-status() {
+	if check-status 0; then
+		print "up: ssh -p $ssh_port $ssh_user@$ssh_host"
+	else
+		print >&2 "down: ssh -p $ssh_port $ssh_user@$ssh_host"
+		return 2
+	fi
+}
+
+check-status() {
+	local cmd=true
+	local sup=${1:-1}
+
+	[[ $platform = windows ]] && cmd=rem
+	if (( $sup )); then
+		ssh $cmd 2>&/dev/null
+	else
+		ssh $cmd
+	fi
+}

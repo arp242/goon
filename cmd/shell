@@ -1,0 +1,11 @@
+# vim:ft=zsh
+
+help-shell() {
+	<<-EOF
+	Run an interactive shell on the remote server.
+	EOF
+}
+
+cmd-shell() { ssh $@ }
+cmd-sh()    { cmd-shell $@ }
+cmd-ssh()   { cmd-shell $@ }

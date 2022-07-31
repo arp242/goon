@@ -1,0 +1,3 @@
+- Install go from the installer.
+- Enable SSH in remote access in settings.
+- Setup sudo to allow passwordless for halt.
