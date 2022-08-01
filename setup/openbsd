@@ -1,0 +1,26 @@
+#!/usr/bin/env zsh
+[ "${ZSH_VERSION:-}" = "" ] && echo >&2 "Only works with zsh" && exit 1
+setopt err_exit no_unset pipefail no_clobber
+
+user=$USER
+key=$(cat ~/.ssh/authorized_keys)
+
+<<-EOF
+	#!/bin/sh
+	#
+	# OpenBSD setup script
+
+	# timeout 0 will hang forever
+	echo 'set timeout 1' >/etc/boot.conf
+
+	# Setup our key.
+	echo "$key" >> /home/$user/.ssh/authorized_keys
+
+	# No login messages.
+	: >/etc/motd
+
+	# Install Go.
+	pkg_add go
+EOF
+
+

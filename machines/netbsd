@@ -1,0 +1,45 @@
+# vim:ft=zsh
+
+ssh_port=9925
+
+start-machine() {
+	local arch=x86_64
+	local version='9.2'
+	local img=$root/disks/$machine-$version.qcow2
+	local pid=$root/run/$machine-$version.pid
+	local ssh_ip=$(resolve-host $ssh_host)
+
+	has-qemu $arch || return 1
+
+	mkdir -p $root/run
+	if has-pid $pid; then
+		print "$progname: $machine already started; nothing to do"
+		return 0
+	fi
+
+	print "$progname: starting QEMU VM from $img:t"
+	local cmd=(qemu-system-$arch
+		-enable-kvm
+		-cpu        "host,kvm=on"
+		-smp        "cores=2,threads=1,sockets=1"
+		-m          "2G"
+		-name       "$machine-$version"
+		-pidfile    "$pid"
+
+		# No display
+		-display    "none"
+
+		# Hard drive
+		-device     "virtio-blk-pci,drive=SystemDisk"
+		-drive      "id=SystemDisk,if=none,file=$img,format=qcow2"
+
+		# Network
+		-device virtio-net,netdev=nic
+		-netdev user,hostfwd=tcp:$ssh_ip:$ssh_port-:22,id=nic
+
+		# quickemu stuff
+		-machine q35,smm=off,vmport=off
+		-device virtio-balloon
+	)
+	${cmd[@]} &
+}

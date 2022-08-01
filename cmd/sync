@@ -16,6 +16,11 @@ help-sync() {
 # the lot. For small projects, that's okay. For larger ones, probably not.
 # Implementing optional rsync support would be a good idea.
 cmd-sync() {
+	if [[ -f go.mod ]]; then
+		print >&2 "$progname: no go.mod; not syncing anything"
+		return 1
+	fi
+
 	case $platform in 
 		(windows)
 			# TODO: output of "wmic os get" is a bit ugly, but best we can do
@@ -30,6 +35,15 @@ cmd-sync() {
 		(*)
 			ssh "mkdir -p \"$dir\" && uname -sr"
 	esac
+
+	# TODO: NetBSD fails with:
+	#
+	#    [~cg/fsnotify](kqueue-unreadable)% scp -CprP 9925 -q cmd scp://martin@localhost/fsnotify
+	#    scp: realpath fsnotify/cmd: No such file
+	#    scp: upload "fsnotify/cmd": path canonicalization failed
+	#    scp: failed to upload directory cmd to fsnotify
+	#
+	# Need to mkdir first? Hmm
 
 	scp -q go.mod go.sum *.go *(/N) scp://$ssh_user@$ssh_host/$dir
 

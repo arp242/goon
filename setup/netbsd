@@ -1,0 +1,40 @@
+#!/usr/bin/env zsh
+[ "${ZSH_VERSION:-}" = "" ] && echo >&2 "Only works with zsh" && exit 1
+setopt err_exit no_unset pipefail no_clobber
+
+user=$USER
+key=$(cat ~/.ssh/authorized_keys)
+
+<<-EOF
+	#!/bin/sh
+	#
+	# NetBSD setup script
+
+	# Don't wait for the bootloader.
+	sed -i 's/^timeout=5$/timeout=0/' /boot.cfg
+
+	# Enable networking and sshd
+	echo 'dhcpcd=YES'          >>/etc/rc.conf
+	echo 'dhcpcd_flags=vioif0' >>/etc/rc.conf
+	echo 'sshd=YES'            >>/etc/rc.conf
+	service dhcpcd start
+	service sshd start
+
+	# Add user, setup our key.
+	useradd -mG wheel $user
+	install -do $user -g $user /home/$user/.ssh
+	echo "$key" >> /home/$user/.ssh/authorized_keys
+
+	# No login messages.
+	: >/etc/motd
+
+	# Install Go.
+	# export PKG_PATH="http://ftp.netbsd.org/pub/pkgsrc/packages/NetBSD/\$(uname -m)/\$(uname -r)/All/"
+	# pkg_add go
+
+	export PKG_PATH="http://cdn.NetBSD.org/pub/pkgsrc/packages/NetBSD/\$(uname -p)/\$(uname -r|cut -f '1 2' -d.)/All/"
+	pkg_add pkgin
+	pkgin -y install ca-certificates go
+	ln -s /usr/pkg/bin/go117 /usr/pkg/bin/go
+EOF
+

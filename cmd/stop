@@ -19,9 +19,9 @@ cmd-stop() {
 	case $platform in 
 		(macos)   ssh 'sudo halt' ;;
 		(windows) ssh 'shutdown /s /f' ;;
-		(*)       ssh 'su -m root -c "shutdown -p now"' ;;
+		(*)       ssh 'su -m root -c "/sbin/halt -p"' ;;
 	esac
 }
 
-cmd-halt()     { cmd-halt $@ }
-cmd-shutdown() { cmd-halt $@ }
+cmd-halt()     { cmd-stop $@ }
+cmd-shutdown() { cmd-stop $@ }
