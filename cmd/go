@@ -39,3 +39,6 @@ cmd-go() {
 cmd-run()   { cmd-go run   $@ }
 cmd-test()  { cmd-go test  $@ }
 cmd-build() { cmd-go build $@ }
+help-run()   { help-go }
+help-test()  { help-go }
+help-build() { help-go }

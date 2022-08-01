@@ -17,4 +17,5 @@ cmd-start() {
 	check-status || wait-ssh
 }
 
-cmd-boot() { cmd-start $@ }
+cmd-boot()  { cmd-start $@ }
+help-boot() { help-start }

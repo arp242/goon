@@ -1,6 +1,6 @@
 #!/usr/bin/env zsh
 [ "${ZSH_VERSION:-}" = "" ] && echo >&2 "Only works with zsh" && exit 1
-setopt err_exit no_unset pipefail
+setopt err_exit no_unset pipefail extended_glob
 
 root=$0:P:h
 progname=$0:t
@@ -8,92 +8,69 @@ dir=$PWD:t
 
 for f in $root/cmd/*; source $f
 
-# TODO: machine cmd order is a bit awkward; for example to list all machines we
-# could add:
-#
-#   go-on ls
-#
-# But now this doesn't work as it needs the machine name first. We already added
-# an exception for help.
-#
-# But on the other hand, this looks awkward IMO:
-#
-#    go-on go freebsd test
-#
-# Also harder to quick edit the command:
-#
-#    go-on go freebsd test
-#    go-on shell freebsd
-#
-#    # Harder to edit than:
-#    go-on freebsd go test
-#    go-on freebsd shell
-#
-# Maybe add -m/-machine flag?
-#
-#     go-on -m freebsd go test
-#     go-on -m freebsd shell
-#
-# But then I need to add flag parsing, which I had hoped to avoid.
-#
-# The old version avoided this by having separate freebsd, macos, etc. scripts
-# that you would run:
-#
-#   ~/go-on/freebsd go test
-#   ~/go-on/macos   go test
-#
-# idk what's the best thing to do it.
 main() {
 	has-commands || exit $?
+	(( $#argv == 0 )) && help ''
 
-	(( $#argv == 0 ))         && help ''
-	[[ ${argv[1]:-} = help ]] && help '' ${argv[2]:-}
+	# Check for -h/-help in any position.
+	local has_help=0
+	for ((i=1; $i<=$#argv; i++)); do
+		if [[ $argv[$i] =~ '^-?-h(elp)?$' ]]; then
+			has_help=1
+			argv[$i]=()
+			break
+		fi
+	done
 
-	# TODO: ugly hack; see comment at the function.
-	if [[ ${argv[1]:-} = ls || ${argv[1]:-} = list || ${argv[1]:-} = machines ]]; then
-		for m in $(list-machines); do
-			(
-				machine=$m
-				typeset -g ssh_user=$USER
-				typeset -g ssh_host=localhost
-				typeset -g ssh_port=22
-
-				[[ -z ${platform:-} ]] && platform=${machine%%-*}
-				source $root/machines/$m
-
-				if check-status; then
-					print -n 'started  '
-				else
-					print -n '         '
-				fi 
-				print -f '%-10s platform=%-10s ssh=%s@%s:%s\n' $m $platform $ssh_user $ssh_host $ssh_port
-			)
-		done
-		exit 0
+	# Some commands don't need a machine.
+	local no_mach=(help ls list machines)
+	if [[ ${no_mach[(r)$argv[1]]:-} = $argv[1] ]]; then
+		(( $has_help )) && help '' $argv[1]
+		cmd-$argv[1] $argv[2,-1]
+		return 0
 	fi
 
 	[[ -z ${argv[1]:-} ]] && help 'machine missing'
 	[[ -z ${argv[2]:-} ]] && help 'command missing'
 
-	typeset -g machine=$argv[1]  # Global
+	# Allow both "freebsd start" and "start freebsd"
+	local machine=$argv[1]
 	local cmd=$argv[2]
+	if has-machine $cmd; then
+		machine=$argv[2]
+		cmd=$argv[1]
+	fi
 	shift 2
 
-	[[ ! -f $root/machines/$machine ]] && help "machine $machine doesn't exist; known machines:\n    $(list-machines)"
+	(( $has_help )) && help '' $cmd
 
+	read-machine $machine
+
+	typeset -f cmd-$cmd >/dev/null || help "unknown command: $cmd"
+	cmd-$cmd $argv
+}
+
+# Read the config; sets globals.
+read-machine() {
+	typeset -g machine=$1
+
+	# Defaults.
 	typeset -g ssh_user=$USER
 	typeset -g ssh_host=localhost
 	typeset -g ssh_port=22
+
+	has-machine $machine || help "machine $machine doesn't exist; known machines:\n    $(list-machines)"
 	source $root/machines/$machine
-	[[ -z ${platform:-} ]] && platform=${machine%%-*}
+
+	[[ -z ${platform:-} ]] && typeset -g platform=${machine%%-*}
 	case $platform in
-		(freebsd|openbsd|netbsd|dragonfly|windows|macos|solaris|illumios) ;;
+		(freebsd|openbsd|netbsd|windows|macos) ;;
+		(dragonfly|aix|illumos|solaris)
+			print >&2 "$progname: warning: $platform is untested (but may work so continuing)" ;;
+		(android|ios|plan9)
+			print >& "$progname: $platform is not supported yet" ;;
 		(*) help "unknown platform $platform"
 	esac
-
-	[[ $cmd =~ '^-*h(elp)?$' ]]      && help '' ${argv[1]:-}
-	typeset -f cmd-$cmd >/dev/null || help "unknown command: $cmd"
-	cmd-$cmd $argv
 }
 
 # Override ssh to add in our port, user, and host.
@@ -123,7 +100,12 @@ has-commands() {
 
 # List all machines.
 list-machines() {
-	(cd $root/machines && print -r -- *)
+	(cd $root/machines && print -r -- *~*.md)
+}
+
+# Do we have this machine?
+has-machine() {
+	[[ -f $root/machines/$1 ]]
 }
 
 # Wait for ssh to be available.
@@ -137,6 +119,19 @@ wait-ssh() {
 	done
 	print 'Okay'
 }
+
+get-version() {
+	# TODO: output of "wmic os get" is a bit ugly, but best we can do atm
+	#       (findstr doesn't support "grep -o"). PowerShell can do more; not
+	#       sure how/why it doesn't just start powershell by default.
+	#       https://stackoverflow.com/a/40781043/660921
+	case $platform in
+		(windows) ssh "wmic os get Version /VALUE | findstr \"[^=][0-9.]*\"" ;;
+		(macos)   ssh "echo \"\$(sw_vers | cut -d : -f 2 | tr -d '\t' | tr '\n' ' ')\"" ;;
+		(*)       ssh "uname -sr"
+	esac
+}
+
 
 ###
 ### QEMU support
@@ -226,37 +221,41 @@ has-pid() {
 }
 
 # Lookup host; zsh doesn't really expose anything for this as far as I can find,
-# so try a bunch of things.
-#
-# Note dig/host/nslookup/drill ignores /etc/hosts; we can't use it.
-#
-# Some other options:
-#
-#   % nc -v localhost 1
-#   nc: connect to localhost (127.0.0.1) port 1 (tcp) failed: Connection refused
+# so try a bunch of things. Note dig/host/nslookup/drill ignores /etc/hosts; we
+# can't use it.
 resolve-host() {
 	local host=$1
 
 	if (( $+commands[getent] )); then
 		local x=($(getent hosts $host))
 		print -r -- $x[1]
+	elif (( $+commands[systemd-resolve] )); then
+		# TODO
+		# systemd-resolve $host -t A             | awk '{print $4; exit}'
+		# systemd-resolve $host -t A --legend=no | awk '{print $4; exit}'
 	elif (( $+commands[python] )); then
-		python -c "import socket; print(socket.gethostbyname('$host'))"
+		python -c "import socket; print(socket.gethostbyname('$host'))" # TODO: escape '
 	elif (( $+commands[ruby] )); then
-		ruby -rresolv -e "puts(Resolv.getaddress('$host'))"
+		ruby -rresolv -e "puts(Resolv.getaddress('$host'))" # TODO: escape '
 	elif (( $+commands[perl] )); then
 		perl -MSocket -MNet::hostent -E 'say inet_ntoa((gethost shift)->addr)' $host
+	elif (( $+commands[php] )); then
+		php -r "print(gethostbyname('$host'));"  # TODO: escape '
+	elif (( $+commands[nc] )); then
+		nc -vNdw 1 $host 1 |& grep -Eo '\([0-9a-f.:]{7,}\)' | tr -d '()'
 	elif (( $+commands[ping] )); then
-		local x=$(ping $host -q -c1 -w1 -W1) # --quiet --count 1 --timeout 1 --linger 1
+		local p=$(ping $host -q -c1 -w1 -W1) # quiet, count, timeout, linger
 		if (( $? > 0 )); then
-			print >&2 -r -- $x
+			print >&2 -r -- $p
 			return $?
 		fi
-		<<<$x head -n1 | grep -Eo '\([0-9a-f.:]{7,}\)' | tr -d '()'
+		<<<$p head -n1 | grep -Eo '\([0-9a-f.:]{7,}\)' | tr -d '()'
 	else
-		print >&2 'no facility to get IP address from host (tried: getent, python, ruby, perl, ping)'
+		print >&2 'resolve-host: no facility to get IP address from host'
 		return 1
 	fi
 }
 
-main $argv[@]
+if [[ $zsh_eval_context = 'toplevel' ]]; then
+	main $argv[@]
+fi

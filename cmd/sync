@@ -9,59 +9,89 @@ help-sync() {
 	EOF
 }
 
+cmd-sync() {
+	# Just in case it's run from the wrong directory.
+	if [[ ! -f go.mod ]]; then
+		print >&2 "$progname: no go.mod in current directory; exiting"
+		return 1
+	fi
+
+	if [[ -n ${no_sync:-} ]]; then
+		:
+	elif (( $+commands[rsync] && $(remote-has-cmd rsync) )) then
+		sync-rsync
+	else
+		sync-scp
+	fi
+}
+
+remote-has-cmd() {
+	if [[ $platform = windows ]]; then
+		ssh "where $1 >nul 2>nul && echo 1 || echo 0" | head -c1
+	else
+		ssh "command -v $1 >/dev/null && echo 1 || echo 0"
+	fi
+}
+
+sync-rsync() {
+	rsync --recursive --delete --exclude='.*' --rsh="ssh -p $ssh_port" \
+		. $ssh_user@$ssh_host:$dir
+}
+
 # Sync files using only ssh and scp; this is nice as there are no dependencies
 # involved.
 #
 # The downside is that it's not the most efficient: it will always just upload
-# the lot. For small projects, that's okay. For larger ones, probably not.
-# Implementing optional rsync support would be a good idea.
-cmd-sync() {
-	if [[ -f go.mod ]]; then
-		print >&2 "$progname: no go.mod; not syncing anything"
-		return 1
-	fi
-
-	case $platform in 
-		(windows)
-			# TODO: output of "wmic os get" is a bit ugly, but best we can do
-			#       atm (findstr doesn't support "grep -o"). PowerShell can do
-			#       more; not sure how/why it doesn't just start powershell by
-			#       default. https://stackoverflow.com/a/40781043/660921
-			ssh "(if not exist \"$dir\" mkdir \"$dir\" end) && wmic os get Version /VALUE | findstr \"[^=][0-9.]*\""
-			;;
-		(macos)
-			ssh "mkdir -p \"$dir\" && echo \"\$(sw_vers | cut -d : -f 2 | tr -d '\t' | tr '\n' ' ')\""
-			;;
-		(*)
-			ssh "mkdir -p \"$dir\" && uname -sr"
+# the lot. For small projects, that's okay. For larger ones, probably not. Using
+# rsync in those cases is better.
+#
+# TODO: NetBSD fails with:
+#
+#    % scp -CprP 9925 -q cmd scp://martin@localhost/fsnotify
+#    scp: realpath fsnotify/cmd: No such file
+#    scp: upload "fsnotify/cmd": path canonicalization failed
+#    scp: failed to upload directory cmd to fsnotify
+#
+# Need to mkdir on NetBSD first? How odd only NetBSD has this issue; I think it
+# still uses the scp protocol instead of sftp maybe?
+#
+#   OpenSSH_8.0 NetBSD_Secure_Shell-20190418-hpn13v14-lpk, OpenSSL 1.1.1k  25 Mar 2021
+#
+# It got changed in 8.8
+#
+# Maybe just use sftp instead of scp, but it's a bit harder to use.
+sync-scp() {
+	case $platform in
+		(windows) ssh "if not exist \"$dir\" mkdir \"$dir\" end" ;;
+		(*)       ssh "mkdir -p \"$dir\""
 	esac
 
-	# TODO: NetBSD fails with:
-	#
-	#    [~cg/fsnotify](kqueue-unreadable)% scp -CprP 9925 -q cmd scp://martin@localhost/fsnotify
-	#    scp: realpath fsnotify/cmd: No such file
-	#    scp: upload "fsnotify/cmd": path canonicalization failed
-	#    scp: failed to upload directory cmd to fsnotify
-	#
-	# Need to mkdir first? Hmm
-
-	scp -q go.mod go.sum *.go *(/N) scp://$ssh_user@$ssh_host/$dir
+	scp -q *(.,@,/) scp://$ssh_user@$ssh_host/$dir
 
 	# Process deletes.
-
-	# TODO: figure out how to do this on Windows.
-	[[ $platform = windows ]] && return 0
-
 	# TODO: none of the below properly escapes filenames.
-	# Use find as we can't rely on zsh/expanded globs on the server
-	local remote=($(ssh "cd $dir && find . -type f"))
-	for (( i=1; i<=$#remote; i++ )); remote[$i]=${remote[$i][3,-1]}
+
+	if [[ $platform = windows ]]; then
+		local rootpath=$(ssh "cd \"$dir\" && cd" | tr -d $'\r\n')
+		local remote=($(ssh "cd \"$dir\" && dir /b /s" | tr -d $'\r'))
+		for (( i=1; i<=$#remote; i++ )); remote[$i]=${remote[$i][$#rootpath + 2,-1]//\\/\/}
+	else
+		local remote=($(ssh "cd \"$dir\" && find . -type f"))
+		for (( i=1; i<=$#remote; i++ )); remote[$i]=${remote[$i][3,-1]}
+	fi
 
 	local rm=()
 	for r in $remote; do
 		[[ ! -e $r ]] && rm+=($r)
 	done
 	if (( $#rm > 0 )); then
-		ssh "cd $dir && rm $rm"
+		if [[ $platform = windows ]]; then
+			# DEL will only delete files, and never directories; so just allow
+			# it to fail here, and we RMDIR directories in a second command.
+			ssh "cd $dir && del /q ${rm//\//\\}" ||:
+			ssh "cd $dir && rmdir /s /q ${rm//\//\\}"
+		else
+			ssh "cd $dir && rm $rm"
+		fi
 	fi
 }

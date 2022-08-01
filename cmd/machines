@@ -1,0 +1,27 @@
+# vim:ft=zsh
+
+help-machines() {
+	<<-EOF
+	List all machines, their configuration, and running state.
+	EOF
+}
+
+cmd-machines() {
+	for m in $(list-machines); do
+		(
+			read-machine $m
+
+			if check-status; then
+				print -n 'started  '
+			else
+				print -n '         '
+			fi
+			print -f '%-10s platform=%-10s ssh=%s@%s:%s\n' $m $platform $ssh_user $ssh_host $ssh_port
+		)
+	done
+}
+
+cmd-ls()   { cmd-machines $@ }
+cmd-list() { cmd-machines $@ }
+help-ls()   { help-machines }
+help-list() { help-machines }

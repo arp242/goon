@@ -3,7 +3,7 @@
 setopt err_exit no_unset pipefail no_clobber
 
 user=$USER
-key=$(cat ~/.ssh/authorized_keys)
+key=$(< ~/.ssh/authorized_keys)
 
 # Setup; we can use -serial stdio in qemu
 #
@@ -13,30 +13,25 @@ key=$(cat ~/.ssh/authorized_keys)
 # Need to look into that
 <<-EOF
 	#!/bin/sh
-	#
 	# FreeBSD setup script
+	set -euC
 
-	# Lots of wasted space.
-	rm -rf /usr/lib/debug
+	# Add line to file only if it's not in there yet.
+	add() { grep -q "\$1" "\$2" || echo "\$1" >>"\$2" }
 
-	# Don't wait for the bootloader.
-	echo 'boot_mute="YES"'    >> /boot/loader.conf
-	echo 'autoboot_delay="0"' >> /boot/loader.conf
+	rm -rf /usr/lib/debug                        # Lots of wasted space
+	: >!/etc/motd.template; : >!/var/run/motd    # No login messages
+	add 'boot_mute="YES"'    /boot/loader.conf   # Don't wait for the bootloader
+	add 'autoboot_delay="0"' /boot/loader.conf
+	add 'sshd_enable=YES'    /etc/rc.conf        # Enable sshd
+	sed -i 's/^#UseDNS yes/UseDNS no/' /etc/ssh/sshd_config
+	service sshd start ||:
 
-	# Enable sshd
-	echo 'sshd_enable=YES' >> /etc/rc.conf
-	service sshd start
+	# Add user
+	grep -q "^$user:" /etc/passwd || pw user add -G wheel -n "$user"
+	install -do "$user" -g "$user" "/home/$user/.ssh"
+	add "$key" "/home/$user/.ssh/authorized_keys"
 
-	# Add user, setup our key.
-	echo passwd | pw user add -G wheel -n $user -h 0
-	install -do $user -g $user /home/$user/.ssh
-	echo "$key" >> /home/$user/.ssh/authorized_keys
-
-	# No login messages.
-	: >/etc/motd.template
-	: >/var/run/motd
-
-	# Install Go.
-	pkg bootstrap
+	pkg bootstrap                                # Install Go
 	pkg install -y go
 EOF

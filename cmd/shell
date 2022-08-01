@@ -3,9 +3,23 @@
 help-shell() {
 	<<-EOF
 	Run an interactive shell on the remote server.
+
+	Like ssh, any further arguments are taken as the command to execute:
+
+	    % $progname freebsd ls /
+	    COPYRIGHT
+	    bin
+	    boot
+	    dev
+	    …
 	EOF
 }
 
-cmd-shell() { ssh $@ }
-cmd-sh()    { cmd-shell $@ }
-cmd-ssh()   { cmd-shell $@ }
+cmd-shell() {
+  ssh $@
+}
+
+cmd-sh()   { cmd-shell $@ }
+cmd-ssh()  { cmd-shell $@ }
+help-sh()  { help-shell }
+help-ssh() { help-shell }

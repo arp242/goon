@@ -3,24 +3,23 @@
 setopt err_exit no_unset pipefail no_clobber
 
 user=$USER
-key=$(cat ~/.ssh/authorized_keys)
+key=$(< ~/.ssh/authorized_keys)
 
 <<-EOF
 	#!/bin/sh
-	#
 	# OpenBSD setup script
+	set -euC
 
-	# timeout 0 will hang forever
-	echo 'set timeout 1' >/etc/boot.conf
+	# Add line to file only if it's not in there yet.
+	add() { grep -q "\$1" "\$2" || echo "\$1" >>"\$2" }
 
-	# Setup our key.
-	echo "$key" >> /home/$user/.ssh/authorized_keys
+	add 'set timeout 1' /etc/boot.conf  # Don't wait for the bootloader (0 is forever)
+	: >!/etc/motd                       # No login messages
 
-	# No login messages.
-	: >/etc/motd
+	# Add user, setup our key.
+	grep -q "^$user:" /etc/passwd || useradd -mG wheel $user
+	install -do "$user" -g "$user" "/home/$user/.ssh"
+	add "$key" >> /home/$user/.ssh/authorized_keys
 
-	# Install Go.
-	pkg_add go
+	pkg_add go                          # Install Go
 EOF
-
-

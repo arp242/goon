@@ -4,7 +4,7 @@ help-top() {
 	<<-EOF
 	usage: $progname [machine] [command]
 
-	$progname runs Go commands on remote machines: https://github.com/arp242/go-on
+	$progname runs Go commands on remote machines: https://github.com/arp242/goon
 
 	Use "$progname help intro" for a general introduction, or "$progname help <cmd>"
 	for detailed help on a command. "$progname help all" lists all help pages.
@@ -19,7 +19,7 @@ help-top() {
 	    sync       Sync the current directory.
 
 	Management:
-	    ssh        Run ssh (alias: shell, sh).
+	    ssh        Start interactive shell (alias: shell, sh).
 	    status     Get status of machine.
 	    start      Start a machine (alias: boot).
 	    stop       Stop a machine (alias: halt, shutdown).
@@ -29,7 +29,7 @@ help-top() {
 
 help-intro() {
 	<<-EOF
-		help-intro TODO
+		TODO: needs to be written.
 	EOF
 }
 
@@ -63,3 +63,5 @@ help() {
 
 	[[ -n $err ]] && exit 1 || exit 0
 }
+
+cmd-help() { help '' $@ }
