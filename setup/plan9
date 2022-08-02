@@ -1,0 +1,8 @@
+qemu image from:
+http://9legacy.org/download.html
+
+bzip2 -d 9legacy-qemu.img.bz2                                   # Expands to 10G
+qemu-img convert -O qcow2  9legacy-qemu.img 9legacy-qemu.qcow2  # ~500M in use
+
+
+https://danieljames.cc/plan9-on-qemu/

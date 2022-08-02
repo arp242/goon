@@ -64,11 +64,11 @@ read-machine() {
 
 	[[ -z ${platform:-} ]] && typeset -g platform=${machine%%-*}
 	case $platform in
-		(freebsd|openbsd|netbsd|windows|macos) ;;
-		(dragonfly|aix|illumos|solaris)
+		(freebsd|openbsd|netbsd|windows|macos|illumos) ;;
+		(dragonfly|aix|solaris)
 			print >&2 "$progname: warning: $platform is untested (but may work so continuing)" ;;
 		(android|ios|plan9)
-			print >& "$progname: $platform is not supported yet" ;;
+			print >&2 "$progname: $platform is not supported yet" ;;
 		(*) help "unknown platform $platform"
 	esac
 }

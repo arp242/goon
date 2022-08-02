@@ -2,3 +2,6 @@
 /run
 *.qcow2
 *.fd
+*.bz2
+*.gz
+*.img

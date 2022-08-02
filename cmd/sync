@@ -69,7 +69,8 @@ sync-scp() {
 	scp -q *(.,@,/) scp://$ssh_user@$ssh_host/$dir
 
 	# Process deletes.
-	# TODO: none of the below properly escapes filenames.
+	# TODO: none of the below properly escapes filenames in the ssh commands;
+	#       will break if it contains a " quote, backslach, etc.
 
 	if [[ $platform = windows ]]; then
 		local rootpath=$(ssh "cd \"$dir\" && cd" | tr -d $'\r\n')

@@ -1,0 +1,19 @@
+- Create disk:
+
+	qemu-img create -f qcow2 illumos-r151042.qcow2 8G
+
+- Download ISO from: https://omnios.org/download.html
+
+- Run installer; after installation "Configure the installed OmniOS system":
+
+  - Configure networking to use DHCP.
+  - Enable SSH server
+  - Create user in installer; grant sudo access
+
+- Install go:
+
+      pkg install go-118
+
+- Bootloader timeout:
+
+	echo 'autoboot_delay="0"' >/boot/loader.conf

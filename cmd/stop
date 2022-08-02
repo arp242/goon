@@ -18,7 +18,8 @@ help-stop() {
 #       restart.
 cmd-stop() {
 	case $platform in 
-		(macos)   ssh 'sudo halt' ;;
+		(macos)   ssh 'sudo halt'      ;;
+		(illumos) ssh 'sudo poweroff'  ;;
 		(windows) ssh 'shutdown /s /f' ;;
 		(*)       ssh 'su -m root -c "/sbin/halt -p"' ;;
 	esac
