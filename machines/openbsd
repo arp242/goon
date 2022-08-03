@@ -11,11 +11,12 @@ start-machine() {
 	local img=$root/disks/$machine-$version.qcow2
 	local pid=$root/run/$machine-$version.pid
 	local ssh_ip=$(resolve-host $ssh_host)
+	local procname=goon-$machine
 
 	has-qemu $arch || return 1
 
 	mkdir -p $root/run
-	if has-pid $pid; then
+	if has-pid $pid $procname; then
 		print "$progname: $machine already started; nothing to do"
 		return 0
 	fi
@@ -39,7 +40,7 @@ start-machine() {
 		-cpu        'host,kvm=on'
 		-smp        'cores=1,threads=2,sockets=1'
 		-m          '2G'
-		-name       "$machine,process=goon-$machine"
+		-name       "$machine,process=$procname"
 		-pidfile    "$pid"
 		-device     'usb-ehci,id=input'
 

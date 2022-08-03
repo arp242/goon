@@ -11,13 +11,14 @@ start-machine() {
 	local img=$root/disks/$machine-$version.qcow2
 	local pid=$root/run/$machine-$version.pid
 	local ssh_ip=$(resolve-host $ssh_host)
+	local procname=goon-$machine
 	local efi=/usr/share/qemu/edk2-x86_64-code.fd
 	local efi_vars=$root/disks/windows-10-OVMF_VARS.fd
 
 	has-qemu $arch || return 1
 
 	mkdir -p $root/run
-	if has-pid $pid; then
+	if has-pid $pid $procname; then
 		print "$progname: $machine already started; nothing to do"
 		return 0
 	fi
@@ -41,7 +42,7 @@ start-machine() {
 		-cpu          'host,kvm=on,+hypervisor,+invtsc,l3-cache=on,migratable=no,hv_frequencies,kvm_pv_unhalt,hv_reenlightenment,hv_relaxed,hv_spinlocks=8191,hv_stimer,hv_synic,hv_time,hv_vapic,hv_vendor_id=1234567890ab,hv_vpindex'
 		-smp          'cores=1,threads=2,sockets=1'
 		-m            '4G'
-		-name         "$machine,process=goon-$machine"
+		-name         "$machine,process=$procname"
 		-pidfile      "$pid"
 		-device       'usb-ehci,id=input'
 

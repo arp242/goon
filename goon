@@ -116,6 +116,7 @@ wait-ssh() {
 	print -n "$progname: waiting for ssh to be available at $ssh_host:$ssh_port … "
 	while :; do
 		check-status && break
+		sleep 0.5
 	done
 	print 'Okay'
 }
@@ -208,11 +209,20 @@ has-pid() {
 
 	[[ ! -f $pidfile ]] && return 1
 
-	# Check this PID actually exists and is what we expect. In case of crashes
-	# or whatnot the pidfile may remain, and the PID could have been re-used by
-	# another process. It's rare, but I've seen it happen and it's VERY
-	# confusing when it does.
-	if [[ $cmd != '' && $(ps -q $(< $pidfile) -o comm=) =~ "^$cmd" ]]; then
+	local proc=$(ps -q $(< $pidfile) -o comm=)
+
+	# No process: probably left over PID file, just remove.
+	if [[ -z $proc ]]; then
+		print >&2 "$progname: pidfile $pidfile exists, but no such process; removing pidfile and continueing"
+		rm $pidfile
+		return 1
+	fi
+
+	# Check this PID is what we expect. In case of crashes or whatnot the
+	# pidfile may remain, and the PID could have been re-used by another
+	# process. It's rare, but I've seen it happen and it's VERY confusing when
+	# it does.
+	if [[ $cmd != '' && $proc != $cmd ]]; then
 		print >&2 "$progname: pidfile $pidfile exists, but PID $(< $pidfile) doesn't seem to be '$cmd'; bailing out"
 		exit 1
 	fi

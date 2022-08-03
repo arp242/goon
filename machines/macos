@@ -11,7 +11,7 @@ start-machine() {
 	local img=$root/disks/$machine-$version.qcow2
 	local pid=$root/run/$machine-$version.pid
 	local ssh_ip=$(resolve-host $ssh_host)
-
+	local procname=goon-$machine
 	local bootimg=$root/disks/macos-12-OpenCore.qcow2
 	local efi=$root/disks/macos-12-OVMF_CODE.fd
 	local efi_vars=$root/disks/macos-12-OVMF_VARS-1024x768.fd
@@ -19,7 +19,7 @@ start-machine() {
 	has-qemu $arch || return 1
 
 	mkdir -p $root/run
-	if has-pid $pid; then
+	if has-pid $pid $procname; then
 		print "$progname: $machine already started; nothing to do"
 		return 0
 	fi
@@ -48,7 +48,7 @@ start-machine() {
 		-cpu          'host,kvm=on,vendor=GenuineIntel,+hypervisor,+invtsc,+kvm_pv_eoi,+kvm_pv_unhalt'
 		-smp          'cores=1,threads=2,sockets=1'
 		-m            '4G'
-		-name         "$machine,process=goon-$machine"
+		-name         "$machine,process=$procname"
 		-pidfile      "$pid"
 		-device       'usb-ehci,id=input'
 
