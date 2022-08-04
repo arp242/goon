@@ -15,6 +15,7 @@ start-machine() {
 	local bootimg=$root/disks/macos-12-OpenCore.qcow2
 	local efi=$root/disks/macos-12-OVMF_CODE.fd
 	local efi_vars=$root/disks/macos-12-OVMF_VARS-1024x768.fd
+	local iso=
 
 	has-qemu $arch || return 1
 
@@ -40,6 +41,13 @@ start-machine() {
 		-device   'usb-tablet,bus=input.0'
 	)
 
+	# Add installer CD if it exists
+	local install=()
+	[[ -f $iso ]] && install=(
+		-cdrom   "$iso"
+		-boot    'd'
+	)
+
 	print "$progname: starting QEMU VM from $img:t"
 	local cmd=(qemu-system-$arch
 		-enable-kvm
@@ -58,6 +66,7 @@ start-machine() {
 		-drive        "id=BootLoader,if=none,format=qcow2,file=$bootimg"
 		-device       'virtio-blk-pci,drive=SystemDisk'
 		-drive        "id=SystemDisk,if=none,format=qcow2,file=$img"
+		$install
 
 		# Network
 		-device       'virtio-net,netdev=nic'

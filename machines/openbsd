@@ -12,6 +12,7 @@ start-machine() {
 	local pid=$root/run/$machine-$version.pid
 	local ssh_ip=$(resolve-host $ssh_host)
 	local procname=goon-$machine
+	local iso=
 
 	has-qemu $arch || return 1
 
@@ -32,6 +33,13 @@ start-machine() {
 		-device   'usb-tablet,bus=input.0'
 	)
 
+	# Add installer CD if it exists
+	local install=()
+	[[ -f $iso ]] && install=(
+		-cdrom   "$iso"
+		-boot    'd'
+	)
+
 	print "$progname: starting QEMU VM from $img:t"
 	local cmd=(qemu-system-$arch
 		-enable-kvm
@@ -49,6 +57,7 @@ start-machine() {
 		# Hard drive
 		-device     "virtio-blk-pci,drive=SystemDisk"
 		-drive      "id=SystemDisk,if=none,file=$img,format=qcow2"
+		$install
 
 		# Network
 		-device virtio-net,netdev=nic

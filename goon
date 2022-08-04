@@ -53,6 +53,7 @@ main() {
 # Read the config; sets globals.
 read-machine() {
 	typeset -g machine=$1
+	local nowarn=${2:-}
 
 	# Defaults.
 	typeset -g ssh_user=$USER
@@ -64,11 +65,11 @@ read-machine() {
 
 	[[ -z ${platform:-} ]] && typeset -g platform=${machine%%-*}
 	case $platform in
-		(freebsd|openbsd|netbsd|windows|macos|illumos) ;;
-		(dragonfly|aix|solaris)
-			print >&2 "$progname: warning: $platform is untested (but may work so continuing)" ;;
+		(freebsd|openbsd|netbsd|windows|macos|illumos|dragonfly) ;;
+		(aix|solaris)
+			[[ -z $nowarn ]] && print >&2 "$progname: warning: $platform is untested (but *should* work, hopefully)" ;;
 		(android|ios|plan9)
-			print >&2 "$progname: $platform is not supported yet" ;;
+			[[ -z $nowarn ]] && print >&2 "$progname: warning: $platform is not supported yet; continuing anyway" ;;
 		(*) help "unknown platform $platform"
 	esac
 }

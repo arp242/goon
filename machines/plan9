@@ -2,17 +2,17 @@
 [ "${ZSH_VERSION:-}" = "" ] && echo >&2 "Only works with zsh" && exit 1
 setopt err_exit no_unset pipefail
 
-ssh_port=9922
+ssh_port=9928
 
 start-machine() {
 	local toplevel=${1:-0}
 	local arch=x86_64
-	local version='13.1-RELEASE'
-	local img=$root/disks/$machine-$version.qcow2
+	local version=''
+	local img=$root/disks/9legacy.qcow2
 	local pid=$root/run/$machine-$version.pid
 	local ssh_ip=$(resolve-host $ssh_host)
 	local procname=goon-$machine
-	local iso=
+	local iso=$root/setup/9legacy.iso
 
 	has-qemu $arch || return 1
 
@@ -43,25 +43,37 @@ start-machine() {
 	print "$progname: starting QEMU VM from $img:t"
 	local cmd=(qemu-system-$arch
 		-enable-kvm
-		-machine    'q35,smm=off,vmport=off'
-		-rtc        'base=localtime,clock=host,driftfix=slew'
-		-cpu        'host,kvm=on'
-		-smp        'cores=1,threads=2,sockets=1'
-		-m          '2G'
-		-name       "$machine,process=$procname"
-		-pidfile    "$pid"
-		-device     'usb-ehci,id=input'
+		-cpu   'host,kvm=on'
+		-hda   $img
+		-m     1024
+		-name  "$machine,process=$procname"
 
-		$display
-
-		# Hard drive
-		-device     "virtio-blk-pci,drive=SystemDisk"
-		-drive      "id=SystemDisk,if=none,file=$img,format=qcow2"
+		-net   nic,model=virtio,macaddr=00:20:91:37:33:77
+		-net user
 		$install
 
+		#-vga   std
+		#-cdrom $iso -boot  d
+
+		# -enable-kvm
+		# -machine    'pc,smm=off,vmport=off'
+		# -rtc        'base=localtime,clock=host,driftfix=slew'
+		# -cpu        'host,kvm=on'
+		# -smp        'cores=1,threads=2,sockets=1'
+		# -m          '2G'
+		# -name       "$machine,process=$procname"
+		# -pidfile    "$pid"
+		#-device     'usb-ehci,id=input'
+
+		# $display
+
+		# Hard drive
+		# -device     "virtio-blk-pci,drive=SystemDisk"
+		# -drive      "id=SystemDisk,if=none,file=$img,format=qcow2"
+
 		# Network
-		-device e1000,netdev=mynet0
-		-netdev user,id=mynet0,hostfwd=tcp:$ssh_ip:$ssh_port-:22
+		# -device e1000,netdev=mynet0
+		# -netdev user,id=mynet0,hostfwd=tcp:$ssh_ip:$ssh_port-:22
 	)
 	${cmd[@]} &
 }

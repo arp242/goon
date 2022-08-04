@@ -14,6 +14,7 @@ start-machine() {
 	local procname=goon-$machine
 	local efi=/usr/share/qemu/edk2-x86_64-code.fd
 	local efi_vars=$root/disks/windows-10-OVMF_VARS.fd
+	local iso=
 
 	has-qemu $arch || return 1
 
@@ -34,6 +35,13 @@ start-machine() {
 		-device   'usb-tablet,bus=input.0'
 	)
 
+	# Add installer CD if it exists
+	local install=()
+	[[ -f $iso ]] && install=(
+		-cdrom   "$iso"
+		-boot    'd'
+	)
+
 	print "$progname: starting QEMU VM from $img:t"
 	local cmd=(qemu-system-$arch
 		-enable-kvm
@@ -49,6 +57,7 @@ start-machine() {
 		# Hard drive
 		-device       'virtio-blk-pci,drive=SystemDisk'
 		-drive        "id=SystemDisk,if=none,format=qcow2,file=$img"
+		$install
 
 		# Network
 		-device       'virtio-net,netdev=nic'

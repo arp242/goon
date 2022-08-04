@@ -28,7 +28,7 @@ key=$(< ~/.ssh/authorized_keys)
 	service sshd start ||:
 
 	# Add user
-	grep -q "^$user:" /etc/passwd || pw user add -G wheel -n "$user"
+	grep -q "^$user:" /etc/passwd || pw user add -mG wheel -n "$user"
 	install -do "$user" -g "$user" "/home/$user/.ssh"
 	add "$key" "/home/$user/.ssh/authorized_keys"
 

@@ -9,7 +9,7 @@ help-machines() {
 cmd-machines() {
 	for m in $(list-machines); do
 		(
-			read-machine $m
+			read-machine $m 1
 
 			if check-status; then
 				print -n 'started  '
