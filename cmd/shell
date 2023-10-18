@@ -6,7 +6,7 @@ help-shell() {
 
 	Like ssh, any further arguments are taken as the command to execute:
 
-	    % $progname freebsd ls /
+	    % $progname freebsd ssh ls /
 	    COPYRIGHT
 	    bin
 	    boot

@@ -16,6 +16,9 @@ help-stop() {
 # TODO: wait for machine to stop; stopping + starting a machine is tricky now;
 #       e.g. Windows takes a minute and the PID will still exist. Maybe also add
 #       restart.
+#
+# TODO: often exits with a non-0 status code because the shutdown command causes
+#       the ssh connection to be stopped.
 cmd-stop() {
 	case $platform in 
 		(macos)   ssh 'sudo halt'      ;;

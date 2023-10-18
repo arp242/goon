@@ -129,8 +129,11 @@ Running tests for a different GOOS is even more complex (impossible actually,
 AFAIK).
 
 ### Why sync with ssh and not directory sharing?
-It's network-transparent and fairly universal; I may want to run this on another
-machine some day.
+It's network-transparent and fairly universal; I may want to run the VMs on
+another machine some day.
+
+If rsync is available on both the host and guest machine then that's used
+instead, which should be a bit faster.
 
 ### Will it work for Python, C, Rust, or other languages?
 With some modifications, sure. It just focuses on Go for now, as that's what I

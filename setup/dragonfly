@@ -18,12 +18,12 @@ key=$(< ~/.ssh/authorized_keys)
 	# Add line to file only if it's not in there yet.
 	add() { grep -q "\$1" "\$2" || echo "\$1" >>"\$2" }
 
-	: >!/etc/motd                                 # No login messages
-	add 'boot_mute="YES"'    /boot/loader.conf    # Don't wait for the bootloader
-	add 'autoboot_delay="0"' /boot/loader.conf
-	add 'ifconfig_em0="DHCP"' /etc/rc.conf        # Enable networking
-	add 'sshd_enable="YES"'   /etc/rc.conf        # Enable sshd
-	/etc/rc.d/netif start                         # Start network
+	: >!/etc/motd                                   # No login messages
+	add 'boot_mute="YES"'        /boot/loader.conf  # Don't wait for the bootloader
+	add 'autoboot_delay="0"'     /boot/loader.conf
+	add 'ifconfig_vtnet0="DHCP"' /etc/rc.conf       # Enable networking
+	add 'sshd_enable="YES"'      /etc/rc.conf       # Enable sshd
+	/etc/rc.d/netif start                           # Start network
 	/etc/rc.d/sshd restart
 
 	# fdisk -B ad0

@@ -4,6 +4,10 @@ help-start() {
 	<<-EOF
 	Run the machine's start-machine function and wait for ssh to become
 	available.
+
+	Flags:
+	    -n, -nowait     Don't wait for SSH to come up; return to shell immediately.
+	    -d, -display    Start a display.
 	EOF
 }
 
@@ -13,7 +17,13 @@ cmd-start() {
 		return 1
 	fi
 
-	start-machine
+	zparseopts -E -D -- \
+		d=display  -d=display  display=display  -display=display \
+		n=no_wait  -n=no_wait  nowait=nowait    -nowait=nowait no-wait=nowait -no-wait=nowait no_wait=nowait -no_wait=nowait
+
+	start-machine ${+display[1]} ${install[2]:-}
+
+	(( ${+no_wait[1]} )) && return 0
 	check-status || wait-ssh
 }
 

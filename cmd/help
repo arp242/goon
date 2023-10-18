@@ -12,18 +12,17 @@ help-top() {
 	Go commands:
 	    go         Start machine, sync directory, and run "go" (alias: test, build,
 	               and run for "go test", "go build", and "go run").
-
 	File commands:
 	    get        Get a file.
 	    put        Put a file.
 	    sync       Sync the current directory.
-
 	Management:
 	    ssh        Start interactive shell (alias: shell, sh).
 	    status     Get status of machine.
 	    start      Start a machine (alias: boot).
 	    stop       Stop a machine (alias: halt, shutdown).
 	    machines   List all machines we know about (alias: list, ls).
+	    new        Create a new QEMU VM (alias: create).
 	EOF
 }
 
@@ -42,8 +41,9 @@ help-all() {
 	}
 
 	help-top
+	print
 	p help-intro
-	for f in $(typeset -f + | grep ^help-); do
+	for f in $(typeset -f + | grep '^help-'); do
 		[[ $f =~ 'help-(all|top|intro)' ]] && continue
 		p $f
 	done

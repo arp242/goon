@@ -1,5 +1,8 @@
 These are some QEMU examples; it's what I use.
 
-The default when started from the `goon` script is to not use a display, but all
-these scripts are executable directly, in which case it will start the VM with a
-display attached.
+The default when started from the `goon` is to use a headless VM, but you can
+also executable these scripts directly to start the VM with a display attached.
+For example:
+
+    % ./machines/windows &
+    % ./goon ssh windows

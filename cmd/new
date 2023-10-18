@@ -1,0 +1,207 @@
+# vim:ft=zsh
+
+help-new() {
+	<<-EOF
+	Create a new QEMU VM. This will:
+
+	- download the install media;
+	- set up a new disk image in $root/disks;
+	- create a new machine configuration in $root/machines;
+	- start the new machine for an unattended installation.
+
+	Flags:
+	    -system    Machine system; must be given. Accepted values: ubuntu,
+	               windows, macos, illumos, freebsd, openbsd, netbsd, dragonfly
+
+	    -version   System version; default is to use the latest version.
+
+	    -iso       Manually specify path to the installation media.
+
+	    -name      Machine name, used for the path in the machines/ and disks/.
+
+	    -ssh_port  SSH port to use; default is to use the highest currently used
+	               plus one, or 9922 if there are no machines yet.
+
+	    -disk      Disk size; default: 8G, or 60G for macOS, 40G for Windows.
+
+	    -memory    Memory; default: 1G, or 4G for Windows and macOS.
+
+	    -cores     CPU cores; default: 1
+
+	    -threads   CPU threads; default: 2
+	EOF
+	# -arch      CPU architecture; default is x86_64. Non-x86_63 is untested.
+}
+
+die() {
+    print >&2 -- goon: $argv
+    exit 1
+}
+
+cmd-new() {
+    local flags=(system version iso name
+        ssh_port # TODO: add alias: ssh-port
+        disk memory cores core threads thread arch)
+    local ff=()
+    for f in $flags; ff+=("$f:=$f" "-$f:=$f")
+	zparseopts -E -D -- $ff
+    system=${system[2]:-}    # These arrays are annoying to deal with.
+    version=${version[2]:-}
+    iso=${iso[2]:-}
+    name=${name[2]:-}
+    ssh_port=${ssh_port[2]:-}
+    disk=${disk[2]:-}
+    memory=${memory[2]:-}
+    cores=${cores[2]:-}
+    threads=${threads[2]:-}
+    arch=${arch[2]:-}
+
+    local install=$root/install/$name.iso
+    local image=$root/disks/$name.qcow2
+
+	# Set defaults.
+    [[ -z $disk    ]] && disk=8G    # TODO: 60G on macOS, 40G on Windows
+    [[ -z $memory  ]] && memory=1G  # TODO: 4G on mac/win
+    [[ -z $cores   ]] && cores=1
+    [[ -z $threads ]] && threads=2
+    [[ -z $arch    ]] && arch=x86_64
+    if [[ -z $ssh_port ]]; then
+        local highest=$(
+            h=0
+            cd $root/machines
+            for f in *~*.md; do
+                source $f
+                (( ${ssh_port:-0} > $h )) && h=$ssh_port
+            done
+            print $h
+        )
+        (( $highest == 0 )) && highest=9921
+        ssh_port=$(( highest + 1 ))
+    fi
+
+    # Validate
+    [[ -z $system                      ]] && die 'required flag -system missing'
+    [[ -n ${iso:-} && ! -f $iso        ]] && die "invalid -iso: file '$iso' does't exist"
+	(( ! $+commands[qemu-system-$arch] )) && die "invalid -arch: qemu-system-$arch not in PATH"
+	[[ -f $root/machines/$name         ]] && die "machine $name already exists"
+	[[ -f $image && $(qemu-img info --output=json $image | jq '."actual-size"') -lt 250000  ]] && die "disk $name already exists and is not empty"
+    # TODO: check numeric $cores $threads $ssh_port
+    #       check size: $disk $memory
+	case $system in
+		(ubuntu|freebsd|openbsd|netbsd|windows|macos|illumos|dragonfly) ;;
+		(*) die "unknown -system: '$system'"
+	esac
+
+	local rels=($(releases-$system))
+	[[ -z $version ]] && version=$rels[-1]
+	(( $rels[(I)$version] == 0 )) && die "unknown version '$version' for $system.\n      known versions: $rels"
+    [[ -z $name ]] && name=${system}-${version}
+
+	mkdir -p $root/disks $root/machines $root/install
+	fetch-$system $version $root/install/$name.iso
+
+    # Create new image.
+    qemu-img create -q -f qcow2 $image $disk
+
+    # Generate machine template
+    # TODO: clean things up; lots of shared stuff there now; need
+    #       qemu-run function or the like.
+    # cat >$root/machines/$name <<-EOF
+    # EOF
+    # chmod a+x $root/machines/$name
+
+    # Start it and run installer script if we got one.
+    # if [[ -f $root/setup/$system ]]; then
+    #    # TODO
+    #    :
+    # else
+    #     print "No installer script for system type '$system'; run the installer manually."
+    #     print "Make sure to run SSH on port $ssh_port and set it up to accept $ssh_key"
+    #     print "for the user $user"
+    # fi
+}
+
+check-sum() {
+	# TODO: filenames don't match any more; meh.
+	# cat freebsd-13.1.iso.sums |
+	#   sed 's/FreeBSD-13.1-RELEASE-amd64-bootonly.iso/freebsd-13.1.iso/' |
+	#   sha256sum --check --ignore-missing --quiet
+	#
+	# MD5 (dfly-i386-3.0.1_REL.iso) = dcabe48f2c5b427a1afbe5c44d9b2f04
+	# MD5 (dfly-i386-3.0.2_REL.img) = 97d977a2e3da997fe810a971005fb70f
+	:
+}
+
+# Fetch a release
+fetch() {
+	local dst=$1
+	local url=$2
+	local check=$3
+
+	if [[ -f $dst ]]; then
+		check-sum $dst && return 0
+
+		print "$dst failed sum check; removing"
+		rm $dst $dst.sums
+	fi
+
+	if [[ -n $check ]]; then
+		print "Fetching install/${dst:t}.sums from $url"
+		curl --fail -o $dst.sums $check
+	fi
+	print "Fetching install/${dst:t} from $url"
+	curl --fail -o $dst $url
+
+	if ! check-sum $dst; then
+		die 'checksum mismatch'
+	fi
+}
+
+# Find releases
+releases() {
+	typeset -U r=($(curl --fail -s $1 | grep -Eo $2))
+	print -r -- ${(o)r}
+}
+
+fetch-freebsd() { fetch $2 \
+	"https://download.freebsd.org/ftp/releases/ISO-IMAGES/$1/FreeBSD-$1-RELEASE-amd64-bootonly.iso" \
+	"https://download.freebsd.org/ftp/releases/ISO-IMAGES/$1/CHECKSUM.SHA256-FreeBSD-$1-RELEASE-amd64" }
+fetch-openbsd() { fetch $2 \
+	"https://cdn.openbsd.org/pub/OpenBSD/$1/amd64/install${1/./}.iso" \
+	"https://cdn.openbsd.org/pub/OpenBSD/$1/amd64/SHA256" }
+fetch-netbsd() { fetch $2 \
+	"https://cdn.netbsd.org/pub/NetBSD/NetBSD-$1/images/NetBSD-$1-amd64.iso" \
+	"https://cdn.netbsd.org/pub/NetBSD/NetBSD-9.3/images/SHA512" }
+fetch-dragonfly() { fetch $2 \
+	"https://mirror-master.dragonflybsd.org/iso-images/dfly-x86_64-$1_REL.iso.bz2" \
+	"http://avalon.dragonflybsd.org/iso-images/md5.txt" }
+fetch-ubuntu() { fetch $2 \
+	"https://releases.ubuntu.com/$1/ubuntu-$1-live-server-amd64.iso" \
+	"https://releases.ubuntu.com/$1/SHA256SUMS" }
+fetch-illumos() { fetch $2 \
+	"" \
+	"" }
+fetch-windows() { fetch $2 \
+	"" \
+	"" }
+fetch-macos() { fetch $2 \
+	"" \
+	"" }
+
+releases-freebsd()   { releases 'https://download.freebsd.org/ftp/releases/ISO-IMAGES/' '[0-9]{2,}\.[0-9]' }
+# TODO: not correct; there's a 7.2 dir with only packages/ as subdir, but no
+#       release yet.
+releases-openbsd()   { releases 'https://cdn.openbsd.org/pub/OpenBSD/'                  '[0-9]{1,}\.[0-9]' }
+releases-netbsd()    { releases 'https://cdn.netbsd.org/pub/NetBSD/'                    '[0-9]{1,}\.[0-9]' }
+releases-dragonfly() { releases 'https://mirror-master.dragonflybsd.org/iso-images/'    '[0-9]{1,}\.[0-9]{1,}\.[0-9]{1,}' }
+# TODO: right now 22.10 is in beta, and this fails:
+# Fetching install/ubuntu-22.10.iso from https://releases.ubuntu.com/22.10/ubuntu-22.10-live-server-amd64.iso
+# Correct link has "beta" in there https://releases.ubuntu.com/22.10/ubuntu-22.10-beta-live-server-amd64.iso
+# Shouldn't include beta versions in release list.
+releases-ubuntu()    { releases 'https://releases.ubuntu.com/'                          '[0-9]{2,}\.[0-9]{2,}(\.[0-9]{1,})?'  }
+releases-illumos()   { releases '' '' }
+releases-windows()   { releases '' '' }
+releases-macos()     { releases '' '' }
+
+cmd-create()  { cmd-new $@ }
+help-create() { help-new }

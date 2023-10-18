@@ -19,9 +19,15 @@ cmd-machines() {
 			print -f '%-10s platform=%-10s ssh=%s@%s:%s\n' $m $platform $ssh_user $ssh_host $ssh_port
 		)
 	done
+
+	# TODO: add disk info too
+	# for f in *.qcow2; printf '%-30s %-15s %s\n' \
+	#	$f \
+	#	"$(qemu-img info $f | grep -o '^virtual size: [0-9.]* [KMG]iB' | sed 's/virtual //')" \
+	#	"$(qemu-img info $f | grep -o '^disk size: [0-9.]* [KMG]iB' | sed 's/disk size/used/')"
 }
 
-cmd-ls()   { cmd-machines $@ }
-cmd-list() { cmd-machines $@ }
+cmd-ls()    { cmd-machines $@ }
+cmd-list()  { cmd-machines $@ }
 help-ls()   { help-machines }
 help-list() { help-machines }

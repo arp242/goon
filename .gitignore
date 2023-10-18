@@ -1,5 +1,6 @@
 /disks
 /run
+/install
 *.qcow2
 *.fd
 *.bz2

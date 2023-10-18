@@ -2,20 +2,35 @@
 [ "${ZSH_VERSION:-}" = "" ] && echo >&2 "Only works with zsh" && exit 1
 setopt err_exit no_unset pipefail
 
+version=12 # "Montery"
 ssh_port=9924
+memory=4G
+cores=1
+threads=2
+arch=x86_64
+cpu=(
+	vendor=GenuineIntel
+	+hypervisor
+	+invtsc
+	+kvm_pv_eoi
+	+kvm_pv_unhalt
+)
 
 start-machine() {
-	local toplevel=${1:-0}
-	local arch=x86_64
-	local version=12 # "Montery"
+	# TODO: always enable for now because it always wants to boot from "EFI" in
+	#       the boot loader, which doesn't work and I need to manualy select
+	#       "Untitled".
+	# https://unix.stackexchange.com/questions/52996/how-to-boot-efi-kernel-using-qemu-kvm
+	local use_display=1 # ${1:-0}
+	local iso=${2:-}
 	local img=$root/disks/$machine-$version.qcow2
 	local pid=$root/run/$machine-$version.pid
 	local ssh_ip=$(resolve-host $ssh_host)
 	local procname=goon-$machine
+
 	local bootimg=$root/disks/macos-12-OpenCore.qcow2
 	local efi=$root/disks/macos-12-OVMF_CODE.fd
 	local efi_vars=$root/disks/macos-12-OVMF_VARS-1024x768.fd
-	local iso=
 
 	has-qemu $arch || return 1
 
@@ -26,70 +41,66 @@ start-machine() {
 	fi
 
 	# No display unless this script is called directly.
-	# TODO: always enable for now because it always wants to boot from "EFI" in
-	#       the boot loader, which doesn't work and I need to manualy select
-	#       "Untitled".
-	# https://unix.stackexchange.com/questions/52996/how-to-boot-efi-kernel-using-qemu-kvm
 	local display=(-display 'none')
-	#(( $toplevel )) && display=(
-	display=(
-		-display  'gtk,grab-on-hover=off,zoom-to-fit=off'
-		-device   'VGA,vgamem_mb=64'
+	(( $use_display )) && display=(
+		-display    'gtk,grab-on-hover=off,zoom-to-fit=off'
+		-device     'VGA,vgamem_mb=64'
 		# Prevents the mouse from being grabbed when clicking in the guest; QEMU
 		# will be able to report the mouse position without having to grab it.
 		# Also overrides PS/2 mouse emulation when activated.
-		-device   'usb-tablet,bus=input.0'
+		-device     'usb-tablet,bus=input.0'
 	)
 
 	# Add installer CD if it exists
 	local install=()
-	[[ -f $iso ]] && install=(
+	[[ -n $iso ]] && install=(
 		-cdrom   "$iso"
 		-boot    'd'
 	)
 
 	print "$progname: starting QEMU VM from $img:t"
 	local cmd=(qemu-system-$arch
+		-name       "$machine,process=$procname"
+		-pidfile    "$pid"
 		-enable-kvm
-		-machine      'q35,smm=off,vmport=off'
-		-rtc          'base=localtime,clock=host,driftfix=slew'
-		-cpu          'host,kvm=on,vendor=GenuineIntel,+hypervisor,+invtsc,+kvm_pv_eoi,+kvm_pv_unhalt'
-		-smp          'cores=1,threads=2,sockets=1'
-		-m            '4G'
-		-name         "$machine,process=$procname"
-		-pidfile      "$pid"
-		-device       'usb-ehci,id=input'
-
+		-machine    'q35,smm=off,vmport=off'
+		-rtc        'base=localtime,clock=host,driftfix=slew'
+		-m          "$memory"
+		-smp        "cores=$cores,threads=$threads,sockets=1"
+		-cpu        "host,kvm=on$( (( $#cpu )) && print ',' )${(j:,:)cpu}"
+		-device     'usb-ehci,id=input'
+		-device     'virtio-balloon'
+		-smbios     "type=2,manufacturer=goon,product=goon,version=3.16,serial=0xDEADBEEF,location=arp242.net,asset=$machine"
 		# Hard drive
-		-device       'ahci,id=ahci'
-		-device       'ide-hd,bus=ahci.0,drive=BootLoader,bootindex=1'
-		-drive        "id=BootLoader,if=none,format=qcow2,file=$bootimg"
-		-device       'virtio-blk-pci,drive=SystemDisk'
-		-drive        "id=SystemDisk,if=none,format=qcow2,file=$img"
-		$install
-
+		-device     'virtio-blk-pci,drive=SystemDisk'
+		-drive      "id=SystemDisk,if=none,file=$img,format=qcow2"
 		# Network
-		-device       'virtio-net,netdev=nic'
-		-netdev       "user,hostname=macos-monterey,hostfwd=tcp:$ssh_ip:$ssh_port-:22,id=nic"
-
-		# EFI
-		-global       'driver=cfi.pflash01,property=secure,value=on'
-		-drive        "if=pflash,format=raw,unit=0,file=$efi,readonly=on"
-		-drive        "if=pflash,format=raw,unit=1,file=$efi_vars"
+		-device     'virtio-net,netdev=nic'
+		-netdev     "user,id=nic,hostname=$machine,hostfwd=tcp:$ssh_ip:$ssh_port-:22"
 
 		$display
+		$install
+
+		# Need to use AHCI, add bootloader image.
+		-device     'ahci,id=ahci'
+		-device     'ide-hd,bus=ahci.0,drive=BootLoader,bootindex=1'
+		-drive      "id=BootLoader,if=none,format=qcow2,file=$bootimg"
+		# EFI
+		-global     'driver=cfi.pflash01,property=secure,value=on'
+		-drive      "if=pflash,format=raw,unit=0,file=$efi,readonly=on"
+		-drive      "if=pflash,format=raw,unit=1,file=$efi_vars"
+		# Old "copy protection" that's more of an easter egg thesedays.
+		-device     'isa-applesmc,osk=ourhardworkbythesewordsguardedpleasedontsteal(c)AppleComputerInc'
 
 		# Random stuff from quickemu; not sure what's needed, but keep it for now.
 		-no-hpet
-		-global       kvm-pit.lost_tick_policy=discard
-		-global       ICH9-LPC.disable_s3=1
-		-device       isa-applesmc,osk=ourhardworkbythesewordsguardedpleasedontsteal\(c\)AppleComputerInc
-		-global       nec-usb-xhci.msi=off
-		-device       virtio-balloon
-		-smbios       type=2,manufacturer="QuickemuProject",product=Quickemu,version=3.16,serial=0xDEADBEEF,location=quickemu.com,asset=macos-monterey
-		-device       virtio-rng-pci,rng=rng0
-		-object       rng-random,id=rng0,filename=/dev/urandom
-		-device       usb-kbd,bus=input.0
+		-global     'kvm-pit.lost_tick_policy=discard'
+		-global     'ICH9-LPC.disable_s3=1'
+		-device     'virtio-rng-pci,rng=rng0'
+		-device     'usb-kbd,bus=input.0'
+		-object     'rng-random,id=rng0,filename=/dev/urandom'
+
+		-global     'nec-usb-xhci.msi=off'
 	)
 	${cmd[@]} &
 }

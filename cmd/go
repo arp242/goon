@@ -24,6 +24,9 @@ cmd-go() {
 	cmd-start
 	cmd-sync
 
+	# TODO: carry over some environment variables such as GOARCH, GOAMD64, etc.,
+	# or at least allow setting them.
+
 	if [[ $platform = macos ]]; then
 		# TODO: why isn't this set on ssh? It works if I just use "ssh", but not
 		#       when using a non-interactive shell? I added it to various zshrc
@@ -36,9 +39,9 @@ cmd-go() {
 	fi
 }
 
-cmd-run()   { cmd-go run   $@ }
-cmd-test()  { cmd-go test  $@ }
-cmd-build() { cmd-go build $@ }
+cmd-run()    { cmd-go run   $@ }
+cmd-test()   { cmd-go test  $@ }
+cmd-build()  { cmd-go build $@ }
 help-run()   { help-go }
 help-test()  { help-go }
 help-build() { help-go }
